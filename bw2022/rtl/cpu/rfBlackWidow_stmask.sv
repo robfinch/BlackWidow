@@ -5,7 +5,7 @@
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
 //
-//	Thor2022_stmask.sv
+//	rfBlackWidow_stmask.sv
 //
 // BSD 3-Clause License
 // Redistribution and use in source and binary forms, with or without
@@ -35,10 +35,10 @@
 //                                                                          
 // ============================================================================
 
-import Thor2022_pkg::*;
-import Thor2022_mmupkg::*;
+import rfBlackWidowPkg::*;
+import rfBlackWidowMmuPkg::*;
 
-module Thor2022_stmask(sel, adr, mask);
+module rfBlackWidow_stmask(sel, adr, mask);
 parameter BUSWID=128;
 input [BUSWID/8-1:0] sel;
 input [1:0] adr;

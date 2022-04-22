@@ -5,7 +5,7 @@
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
 //
-//	Thor2022_ichit.sv
+//	rfBlackWidow_ichit.sv
 //
 // BSD 3-Clause License
 // Redistribution and use in source and binary forms, with or without
@@ -35,10 +35,10 @@
 //                                                                          
 // ============================================================================
 
-import Thor2022_pkg::*;
-import Thor2022_mmupkg::*;
+import rfBlackWidowPkg::*;
+import rfBlackWidowMmuPkg::*;
 
-module Thor2022_ichit(clk, ip, tag, valid, ihit, rway, vtag, icv);
+module rfBlackWidow_ichit(clk, ip, tag, valid, ihit, rway, vtag, icv);
 parameter LINES=128;
 parameter WAYS=4;
 parameter AWID=32;

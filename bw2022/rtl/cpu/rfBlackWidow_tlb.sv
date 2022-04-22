@@ -5,7 +5,7 @@
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
 //
-//	Thor2022_tlb.sv
+//	rfBlackWidow_tlb.sv
 //
 // BSD 3-Clause License
 // Redistribution and use in source and binary forms, with or without
@@ -35,10 +35,10 @@
 //                                                                          
 // ============================================================================
 
-import Thor2022_pkg::*;
-import Thor2022_mmupkg::*;
+import rfBlackWidowPkg::*;
+import rfBlackWidowMmuPkg::*;
 
-module Thor2022_tlb(rst_i, clk_i, clock, al_i, rdy_o, asid_i, sys_mode_i,xlaten_i,
+module rfBlackWidow_tlb(rst_i, clk_i, clock, al_i, rdy_o, asid_i, sys_mode_i,xlaten_i,
 	we_i,stptr_i,
 	dadr_i,next_i,iacc_i,dacc_i,iadr_i,padr_o,acr_o,tlben_i,wrtlb_i,tlbadr_i,tlbdat_i,tlbdat_o,
 	tlbmiss_o, tlbmiss_adr_o, tlbkey_o,
@@ -467,7 +467,7 @@ end
 genvar g;
 generate begin : gTlbRAM
 for (g = 0; g < ASSOC; g = g + 1)
-	Thor2022_TLBRam u1 (
+	rfBlackWidow_TLBRam u1 (
 	  .clka(clk_g),    // input wire clka
 	  .ena(tlben_i|tlbeni),      // input wire ena
 	  .wea(wrtlb[g]|tlbwrr[g]),      // input wire [0 : 0] wea

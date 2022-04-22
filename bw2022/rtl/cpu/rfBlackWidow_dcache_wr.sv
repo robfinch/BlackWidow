@@ -5,7 +5,7 @@
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
 //
-//	rfBlackWidow_dctag.sv
+//	rfBlackWidow_dcache_wr.sv
 //
 // BSD 3-Clause License
 // Redistribution and use in source and binary forms, with or without
@@ -38,46 +38,49 @@
 import rfBlackWidowPkg::*;
 import rfBlackWidowMmuPkg::*;
 
-module rfBlackWidow_dctag(clk, wr, adr, way, rclk, ndx, tag);
-parameter LINES=128;
-parameter WAYS=4;
-parameter AWID=32;
+module rfBlackWidow_dcache_wr(clk, state, ack, func, dce, hit, inv, acr, eaeo, daeo, wr);
 input clk;
-input wr;
-input [AWID-1:0] adr;
-input [1:0] way;
-input rclk;
-input [6:0] ndx;
-(* ram_style="block" *)
-output reg [AWID-1:6] tag [3:0];
-
-reg [AWID-1:6] tags [0:WAYS *LINES-1];
-reg [6:0] rndx;
-
-integer g;
-integer n;
-
-initial begin
-for (g = 0; g < WAYS; g = g + 1) begin
-  for (n = 0; n < LINES; n = n + 1)
-    tags[g * LINES + n] = 32'd1;
-end
-end
+input [6:0] state;
+input ack;
+input [6:0] func;
+input dce;
+input hit;
+input inv;
+input [3:0] acr;
+input eaeo;
+input daeo;
+output reg wr;
 
 always_ff @(posedge clk)
 begin
-	if (wr)
-		tags[way * LINES + adr[13:7]] <= adr[AWID-1:6];
+	wr <= 1'b0;
+	case(state)
+	MEMORY_ACKLO:
+		if (!inv && (dce & hit & acr[3]) &&
+			(func==MR_STORE || func==MR_MOVST || func==M_CALL) &&
+			ack) begin
+			if (~eaeo)
+				wr <= 1'b1;
+		end
+	MEMORY_ACKHI:
+		if ((dce & hit & acr[3]) && 
+			(func==MR_STORE || func==MR_MOVST || func==M_CALL) &&
+			ack) begin
+			if (eaeo)
+				wr <= 1'b1;
+		end
+	DFETCH7:
+		begin
+	  	if (daeo)
+	  		wr <= 1'b1;
+	  end
+	IPT_RW_PTG4:
+		if (!inv && (dce & hit) && func==MR_STORE && ack) begin
+			if (daeo)
+				wr <= 1'b1;
+		end
+	default:	;
+	endcase
 end
-always_ff @(posedge rclk)
-	rndx <= ndx;
-always_comb
-	tag[0] = tags[0 * LINES + rndx];
-always_comb
-	tag[1] = tags[1 * LINES + rndx];
-always_comb
-	tag[2] = tags[2 * LINES + rndx];
-always_comb
-	tag[3] = tags[3 * LINES + rndx];
 
 endmodule

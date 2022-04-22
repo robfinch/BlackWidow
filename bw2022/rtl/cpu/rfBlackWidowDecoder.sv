@@ -15,6 +15,11 @@ begin
 	dec.Rt = 'd0;
 	dec.rfwr = 1'b0;
 	dec.prfwr = 1'b0;
+	dec.br = 1'b0;
+	dec.imm = 'd0;
+	dec.pn = ir.any.pr;
+	dec.pRt1 = 'd0;
+	dec.pRt2 = 'd0;
 	case(ir.any.opcode)
 	R2:
 		case(ir.r2.func)
@@ -26,6 +31,8 @@ begin
 		CMP,CMPU:
 			begin
 				dec.prfwr = 1'b1;
+				dec.pRt1 = ir.cmp.pRt1;
+				dec.pRt2 = ir.cmp.pRt2;
 			end
 		LDBX,LDBUX,LDWX,LDWUX,LDTX,LDTUX,LDOX,LDOUX,LDPX,LDPUX,LDDX:
 			begin
@@ -35,6 +42,12 @@ begin
 		STBX,STWX,STTX,STOX,STPX,STDX:
 			begin
 				dec.Rc = ir.ri.Rt;
+			end
+		JMP:
+			begin	
+				dec.br = 1'b1;
+				dec.Rt = ir.r2.Rt;
+				dec.rfwr = 1'b1;
 			end
 		default:	
 			begin
@@ -50,6 +63,8 @@ begin
 		begin
 			dec.prfwr = 1'b1;
 			dec.imm = {{74{ir.cmpi.imm[5]}},ir.cmpi.imm};
+			dec.pRt1 = ir.cmpi.pRt1;
+			dec.pRt2 = ir.cmpi.pRt2;
 		end
 	LDB,LDBU,LDW,LDWU,LDT,LDTU,LDO,LDOU,LDP,LDPU,LDD:
 		begin
@@ -61,6 +76,25 @@ begin
 		begin
 			dec.Rc = ir.ri.Rt;
 			dec.imm = {{65{ir.ri.imm[14]}},ir.ri.imm};
+		end
+	BRA:
+		begin
+			dec.imm = {{53{ir.br.disp[26]}},ir.br.disp};
+			dec.br = 1'b1;
+		end
+	BMR:
+		begin
+			dec.imm = {{53{ir.br.disp[26]}},ir.br.disp};
+			dec.br = 1'b1;
+			dec.rfwr = 1'b1;
+			dec.Rt = 6'd1;
+		end
+	BMR:
+		begin
+			dec.imm = {{53{ir.br.disp[26]}},ir.br.disp};
+			dec.br = 1'b1;
+			dec.rfwr = 1'b1;
+			dec.Rt = 6'd2;
 		end
 	default:
 		begin

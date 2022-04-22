@@ -5,7 +5,7 @@
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
 //
-//	Thor2022_dchit.sv
+//	rfBlackWidow_dchit.sv
 //
 // BSD 3-Clause License
 // Redistribution and use in source and binary forms, with or without
@@ -35,10 +35,10 @@
 //                                                                          
 // ============================================================================
 
-import Thor2022_pkg::*;
-import Thor2022_mmupkg::*;
+import rfBlackWidowPkg::*;
+import rfBlackWidowMmuPkg::*;
 
-module Thor2022_dchit(clk, tags, ndx, adr, valid, hits, hit, rway);
+module rfBlackWidow_dchit(clk, tags, ndx, adr, valid, hits, hit, rway);
 parameter AWID=32;
 input clk;
 input [AWID-7:0] tags [3:0];

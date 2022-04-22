@@ -5,7 +5,7 @@
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
 //
-//	Thor2022_mem_req_queue.sv
+//	rfBlackWidow_mem_req_queue.sv
 //
 // BSD 3-Clause License
 // Redistribution and use in source and binary forms, with or without
@@ -35,10 +35,10 @@
 //                                                                          
 // ============================================================================
 
-import Thor2022_pkg::*;
-import Thor2022_mmupkg::*;
+import rfBlackWidowPkg::*;
+import rfBlackWidowMmuPkg::*;
 
-module Thor2022_mem_req_queue(rst, clk, wr0, wr_ack0, i0, wr1, wr_ack1, i1,
+module rfBlackWidow_mem_req_queue(rst, clk, wr0, wr_ack0, i0, wr1, wr_ack1, i1,
 	rd, o, valid, empty, ldo0, found0, ldo1, found1);
 parameter AWID = 32;
 parameter QDEP = 7;

@@ -39,11 +39,11 @@
 import rfBlackWidowPkg::*;
 import rfBlackWidowMmuPkg::*;
 
-module rfBlackWidow_biu(rst,clk,tlbclk,clock,UserMode,MUserMode,omode,ASID,bounds_chk,pe,
+module rfBlackWidow_biu(rst,clk,tlbclk,clock,UserMode,MUserMode,omode,ASID,bounds_chk,
 	ip,ihit,ifStall,ic_line, fifoToCtrl_wack,
 	fifoToCtrl_i,fifoToCtrl_full_o,fifoFromCtrl_o,fifoFromCtrl_rd,fifoFromCtrl_empty,fifoFromCtrl_v,
 	bok_i, bte_o, cti_o, vpa_o, vda_o, cyc_o, stb_o, ack_i, we_o, sel_o, adr_o,
-	dat_i, dat_o, sr_o, cr_o, rb_i, dce, keys, arange, ptbr, ipage_fault, clr_ipage_fault,
+	dat_i, dat_o, sr_o, cr_o, rb_i, dce, arange, ptbr, ipage_fault, clr_ipage_fault,
 	itlbmiss, clr_itlbmiss);
 parameter AWID=32;
 input rst;
@@ -55,11 +55,10 @@ input MUserMode;
 input [1:0] omode;
 input [11:0] ASID;
 input bounds_chk;
-input pe;									// protected mode enable
 input Address ip;
 output reg ihit;
 input ifStall;
-output [pL1ICacheLineSize-1:0] ic_line;
+output reg [1023:0] ic_line;
 // Fifo controls
 output fifoToCtrl_wack;
 input MemoryRequest fifoToCtrl_i;
@@ -87,7 +86,6 @@ output reg cr_o;
 input rb_i;
 
 output reg dce;							// data cache enable
-input [23:0] keys [0:7];
 input [2:0] arange;
 input [127:0] ptbr;
 output reg ipage_fault;
@@ -106,6 +104,9 @@ integer m,n,k;
 integer n4,n5;
 genvar g;
 
+reg pe = 1'b0;									// protected mode enable
+reg [9:0] asid;
+reg [23:0] keys [0:7];
 reg [5:0] shr_ma;
 
 reg [6:0] state;
@@ -196,7 +197,7 @@ wire [63:0] datis = dati >> {ealow[1:0],3'b0};
 // Build an insert mask for data cache store operations.
 wire [511:0] stmask;
 
-Thor2022_stmask ustmsk (sel_o, adr_o[5:4], stmask);
+rfBlackWidow_stmask ustmsk (sel_o, adr_o[5:4], stmask);
 
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -211,7 +212,7 @@ reg [5:0] rgn_adr;
 Value rgn_dat;
 Value rgn_dat_o;
 
-Thor2022_active_region uargn
+rfBlackWidow_active_region uargn
 (
 	.clk(clk),
 	.wr(rgn_wr),
@@ -262,7 +263,7 @@ any1_mem_fifo #(.WID($bits(MemoryRequest))) uififo1
 assign fifoToCtrl_v = TRUE;
 */
 
-Thor2022_mem_req_queue umreqq
+rfBlackWidow_mem_req_queue umreqq
 (
 	.rst(rst),
 	.clk(clk),
@@ -344,92 +345,179 @@ assign fifoFromCtrl_empty = ofifo_cnt==4'd0;
 // Instruction cache
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-reg [1:0] ic_rway,ic_wway;
+wire ihite, ihito;
+assign ihit = ihite & ihito;
+reg [1:0] ic_rwaye,ic_rwayo,ic_wway;
 reg icache_wr;
-always_comb icache_wr = state==IFETCH3;
-reg ic_invline,ic_invall;
+reg icache_wre, icache_wro;
 Address ipo;
-wire [AWID-1:6] ictag [0:3];
-wire [512/4-1:0] icvalid [0:3];
+always_comb icache_wre = state==IFETCH3 && ~ipo[6];
+always_comb icache_wro = state==IFETCH3 &&  ipo[6];
+reg ic_invline,ic_invall;
+wire [AWID-1:6] ictage [0:3];
+wire [AWID-1:6] ictago [0:3];
+wire [512/4-1:0] icvalide [0:3];
+wire [512/4-1:0] icvalido [0:3];
+wire [511:0] ic_linee, ic_lineo;
 
 reg [639:0] ici;		// Must be a multiple of 128 bits wide for shifting.
-wire [AWID-7:0] ic_tag;
+wire [AWID-7:0] ic_tage, ic_tago;
 reg [2:0] ivcnt;
 reg [2:0] vcn;
 reg [pL1ICacheLineSize-1:0] ivcache [0:4];
 reg [AWID-1:6] ivtag [0:4];
 reg [4:0] ivvalid;
-wire ic_valid;
+wire ic_valide, ic_valido;
+reg ic_valid;
+always_comb
+	ic_valid = ic_valide & ic_valido;
 
 
-// 640 wide x 512 deep
-icache_blkmem uicm (
+// 512 wide x 512 deep
+icache_blkmem uicme (
   .clka(clk),    // input wire clka
   .ena(1'b1),      // input wire ena
-  .wea(icache_wr),      // input wire [0 : 0] wea
-  .addra({waycnt,ipo[12:6]}),  // input wire [8 : 0] addra
-  .dina(ici[pL1ICacheLineSize-1:0]),    // input wire [511 : 0] dina
+  .wea(icache_wre),      // input wire [0 : 0] wea
+  .addra({waycnt,ipo[13:7]}),  // input wire [8 : 0] addra
+  .dina(ici[511:0]),    // input wire [511 : 0] dina
   .clkb(~clk),    // input wire clkb
   .enb(1'b1),//!ifStall),      // input wire enb
-  .addrb({ic_rway,ip[12:6]}),  // input wire [8 : 0] addrb
-  .doutb(ic_line)  // output wire [511 : 0] doutb
+  .addrb({ic_rwaye,ip[13:7]+ip[6]}),  // input wire [8 : 0] addrb
+  .doutb(ic_linee)  // output wire [511 : 0] doutb
 );
 
-Thor2022_ictag 
+icache_blkmem uicmo (
+  .clka(clk),    // input wire clka
+  .ena(1'b1),      // input wire ena
+  .wea(icache_wro),      // input wire [0 : 0] wea
+  .addra({waycnt,ipo[13:7]}),  // input wire [8 : 0] addra
+  .dina(ici[511:0]),    // input wire [511 : 0] dina
+  .clkb(~clk),    // input wire clkb
+  .enb(1'b1),//!ifStall),      // input wire enb
+  .addrb({ic_rwayo,ip[13:7]}),  // input wire [8 : 0] addrb
+  .doutb(ic_lineo)  // output wire [511 : 0] doutb
+);
+
+rfBlackWidow_ictag 
 #(
 	.LINES(128),
 	.WAYS(4),
 	.AWID(AWID)
 )
-uictag1
+uictag1e
 (
+	.evn(1'b1),
 	.clk(clk),
-	.wr(icache_wr),
+	.wr(icache_wre),
 	.ipo(ipo),
 	.way(waycnt),
 	.rclk(~tlbclk),
 	.ip(ip),
-	.tag(ictag)
+	.tag(ictage)
 );
 
-Thor2022_ichit
+rfBlackWidow_ictag 
 #(
 	.LINES(128),
 	.WAYS(4),
 	.AWID(AWID)
 )
-uichit1
+uictag1o
+(
+	.evn(1'b0),
+	.clk(clk),
+	.wr(icache_wro),
+	.ipo(ipo),
+	.way(waycnt),
+	.rclk(~tlbclk),
+	.ip(ip),
+	.tag(ictago)
+);
+
+rfBlackWidow_ichit
+#(
+	.LINES(128),
+	.WAYS(4),
+	.AWID(AWID)
+)
+uichit1e
+(
+	.clk(tlbclk),
+	.ip(ip[12:0]+{ip[6],6'b0}), // only bits 12 to 6 used
+	.tag(ictage),
+	.valid(icvalide),
+	.ihit(ihite),
+	.rway(ic_rwaye),
+	.vtag(ic_tage),
+	.icv(ic_valide)
+);
+
+rfBlackWidow_ichit
+#(
+	.LINES(128),
+	.WAYS(4),
+	.AWID(AWID)
+)
+uichit1o
 (
 	.clk(tlbclk),
 	.ip(ip),
-	.tag(ictag),
-	.valid(icvalid),
-	.ihit(ihit),
-	.rway(ic_rway),
-	.vtag(ic_tag),
-	.icv(ic_valid)
+	.tag(ictago),
+	.valid(icvalido),
+	.ihit(ihito),
+	.rway(ic_rwayo),
+	.vtag(ic_tago),
+	.icv(ic_valido)
 );
 
-Thor2022_icvalid 
+rfBlackWidow_icvalid 
 #(
 	.LINES(128),
 	.WAYS(4),
 	.AWID(AWID)
 )
-uicval1
+uicval1e
 (
 	.rst(rst),
 	.clk(tlbclk),
-	.invce(state==MEMORY4),
+	.invce(state==MEMORY4 & ~ipo[6]),
 	.ip(ipo),
 	.adr(adr_o),
-	.wr(icache_wr),
+	.wr(icache_wre),
 	.way(waycnt),
 	.invline(ic_invline),
 	.invall(ic_invall),
-	.valid(icvalid)
+	.valid(icvalide)
 );
 
+rfBlackWidow_icvalid 
+#(
+	.LINES(128),
+	.WAYS(4),
+	.AWID(AWID)
+)
+uicval1o
+(
+	.rst(rst),
+	.clk(tlbclk),
+	.invce(state==MEMORY4 & ipo[6]),
+	.ip(ipo),
+	.adr(adr_o),
+	.wr(icache_wro),
+	.way(waycnt),
+	.invline(ic_invline),
+	.invall(ic_invall),
+	.valid(icvalido)
+);
+
+always_comb
+	case(adr_o[6])
+	1'b0:	ic_line = {ic_lineo,ic_linee};
+	1'b1:	ic_line = {ic_linee,ic_lineo};
+	endcase
+reg eo_line;
+always_comb
+	eo_line = adr_o[6];
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // Key Cache
@@ -521,7 +609,7 @@ wire [AWID-7:0] dc_otag [3:0];
 wire [127:0] dc_ovalid [0:3];
 wire [3:0] dhit1o;
 
-Thor2022_dchit udchite
+rfBlackWidow_dchit udchite
 (
 	.clk(clk),
 	.tags(dc_etag),
@@ -533,7 +621,7 @@ Thor2022_dchit udchite
 	.rway(dc_erway)
 );
 
-Thor2022_dchit udchito
+rfBlackWidow_dchit udchito
 (
 	.clk(clk),
 	.tags(dc_otag),
@@ -549,7 +637,7 @@ reg dhit;
 always_comb
 	dhit = (dhite & dhito) || (adr_o[6] ? (dhito && adr_o[5:4] != 2'b11) : (dhite && adr_o[5:4] != 2'b11));
 
-Thor2022_dctag
+rfBlackWidow_dctag
 #(
 	.LINES(128),
 	.WAYS(4),
@@ -566,7 +654,7 @@ udcotag
 	.tag(dc_otag)
 );
 
-Thor2022_dctag
+rfBlackWidow_dctag
 #(
 	.LINES(128),
 	.WAYS(4),
@@ -583,7 +671,7 @@ udcetag
 	.tag(dc_etag)
 );
 
-Thor2022_dcvalid
+rfBlackWidow_dcvalid
 #(
 	.LINES(128),
 	.WAYS(4),
@@ -603,7 +691,7 @@ udcovalid
 	.valid(dc_ovalid)
 );
 
-Thor2022_dcvalid
+rfBlackWidow_dcvalid
 #(
 	.LINES(128),
 	.WAYS(4),
@@ -623,7 +711,7 @@ udcevalid
 	.valid(dc_evalid)
 );
 
-Thor2022_dcache_wr udcwre
+rfBlackWidow_dcache_wr udcwre
 (
 	.clk(clk),
 	.state(state),
@@ -638,7 +726,7 @@ Thor2022_dcache_wr udcwre
 	.wr(dcache_ewr)
 );
 
-Thor2022_dcache_wr udcwro
+rfBlackWidow_dcache_wr udcwro
 (
 	.clk(clk),
 	.state(state),
@@ -653,7 +741,7 @@ Thor2022_dcache_wr udcwro
 	.wr(dcache_owr)
 );
 
-Thor2022_dcache_way udcwaye
+rfBlackWidow_dcache_way udcwaye
 (
 	.clk(clk),
 	.state(state),
@@ -670,7 +758,7 @@ Thor2022_dcache_way udcwaye
 	.wway(dc_ewway)
 );
 
-Thor2022_dcache_way udcwayo
+rfBlackWidow_dcache_way udcwayo
 (
 	.clk(clk),
 	.state(state),
@@ -723,7 +811,7 @@ PMTE pmtram_doutb;
 wire pmtram_web;
 wire [13:0] pmtram_adrb;
 
-Thor2022_tlb utlb (
+rfBlackWidow_tlb utlb (
   .rst_i(rst),
   .clk_i(tlbclk),
   .al_i(ptbr[7:6]),
@@ -851,7 +939,7 @@ PTG_RAM uptgram (
 `endif
 
 `ifdef SUPPORT_HASHPT2
-Thor2022_ipt_hash uhash
+rfBlackWidow_ipt_hash uhash
 (
 	.clk(clk),
 	.asid(ASID),
@@ -860,7 +948,7 @@ Thor2022_ipt_hash uhash
 	.hash(hash)
 );
 
-Thor2022_ptg_search uptgs
+rfBlackWidow_ptg_search uptgs
 (
 	.ptg(ptg),
 	.asid(ASID),
@@ -887,7 +975,7 @@ always_ff @(posedge clk)
 	prev_idadr <= idadr;
 
 `ifdef SUPPORT_HASHPT
-Thor2022_ipt_hash uhash
+rfBlackWidow_ipt_hash uhash
 (
 	.clk(clk),
 	.asid(ASID),
@@ -896,7 +984,7 @@ Thor2022_ipt_hash uhash
 	.hash(hash)
 );
 
-Thor2022_ptg_search uptgs
+rfBlackWidow_ptg_search uptgs
 (
 	.ptg(ptg),
 	.asid(ASID),
@@ -1335,7 +1423,7 @@ else begin
 `ifndef SUPPORT_HWWALK
 			if (tlbmiss) begin
 				itlbmiss <= 1'b1;
-				ici <= {40{8'b0,NOP}};
+				ici <= {26{NOP_INSN}};
 				goto (IFETCH3);
 			end
 `endif
@@ -1348,7 +1436,7 @@ else begin
 						if (ivcnt>=3'd4)
 							ivcnt <= 3'd0;
 						ivcache[ivcnt] <= ic_line;
-						ivtag[ivcnt] <= ic_tag;
+						ivtag[ivcnt] <= eo_line ? ic_tago : ic_tage;
 						ivvalid[ivcnt] <= TRUE;
 						if (ic_line=='d0)
 							$stop;
@@ -1412,7 +1500,7 @@ else begin
 			ici <= {96'd0,ivcache[vcn]};
 			if (ic_valid) begin
 				ivcache[vcn] <= ic_line;
-				ivtag[vcn] <= ic_tag;
+				ivtag[vcn] <= eo_line ? ic_tago : ic_tage;
 				ivvalid[vcn] <= `VAL;
 				if (ic_line=='d0)
 					$stop;
@@ -1712,7 +1800,7 @@ else begin
 `ifdef SUPPORT_SHPTE
 			      if (dcnt[3:0]==4'd3) begin		// Are we done?
 `else		    	
-				    if (dcnt[3:0]==Thor2022_mmupkg::PtgSize/128-1) begin		// Are we done?
+				    if (dcnt[3:0]==rfBlackWidowMmuPkg::PtgSize/128-1) begin		// Are we done?
 `endif		      	
 `ifdef SUPPORT_MMU_CACHE		      	
 			      	for (n4 = 1; n4 < PTGC_DEP; n4 = n4 + 1)
@@ -2300,7 +2388,7 @@ begin
 		end
 	default:	ret();	// unknown operation
 	endcase
-	casez(memreq.adr.offs)
+	casez(memreq.adr)
 	32'hFF9F????:
 		begin
 			rgn_en <= 1'b1;

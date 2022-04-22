@@ -5,7 +5,7 @@
 //     \/_//     robfinch<remove>@finitron.ca
 //       ||
 //
-//	Thor2022_ictag.sv
+//	rfBlackWidow_ictag.sv
 //
 // BSD 3-Clause License
 // Redistribution and use in source and binary forms, with or without
@@ -35,13 +35,14 @@
 //                                                                          
 // ============================================================================
 
-import Thor2022_pkg::*;
-import Thor2022_mmupkg::*;
+import rfBlackWidowPkg::*;
+import rfBlackWidowMmuPkg::*;
 
-module Thor2022_ictag(clk, wr, ipo, way, rclk, ip, tag);
+module rfBlackWidow_ictag(evn, clk, wr, ipo, way, rclk, ip, tag);
 parameter LINES=128;
 parameter WAYS=4;
 parameter AWID=32;
+input evn;
 input clk;
 input wr;
 input [AWID-1:0] ipo;
@@ -71,7 +72,11 @@ begin
 end
 
 always_ff @(posedge rclk)
-	rip <= ip;
+begin
+	rip[5:0] <= ip[5:0];	// not used
+	rip[12:6] <= ip[12:6] + (evn ? ip[6] : 1'b0);
+	rip[AWID-1:13] <= ip[AWID-1:13];
+end
 assign tag[0] = tags[{2'b00,rip[12:6]}];
 assign tag[1] = tags[{2'b01,rip[12:6]}];
 assign tag[2] = tags[{2'b10,rip[12:6]}];

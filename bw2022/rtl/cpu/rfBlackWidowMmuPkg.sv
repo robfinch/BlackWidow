@@ -39,6 +39,9 @@ import rfBlackWidowPkg::*;
 
 package rfBlackWidowMmuPkg;
 
+typedef rfBlackWidowPkg::Address VirtualAddress;
+typedef rfBlackWidowPkg::Address PhysicalAddress;
+
 typedef struct packed
 {
 	logic [19:0] at;
