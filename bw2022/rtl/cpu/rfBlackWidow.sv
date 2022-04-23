@@ -23,8 +23,9 @@ output [127:0] dat_o;
 wire clk_g = clk_i;
 
 reg [79:0] ip, ip0, ip1, ip2;
+Address xip;
 reg [239:0] insn;
-reg [39:0] insn0, insn1, insn2;
+Instruction insn0, insn1, insn2;
 wire ihit;
 wire [1023:0] ic_line;
 reg [239:0] ir;
@@ -37,6 +38,7 @@ Value rfo6, rfo7, rfo8;
 Value rfoa0, rfob0, rfoc0;
 Value rfoa1, rfob1, rfoc1;
 Value rfoa2, rfob2, rfoc2;
+Value wrfoa0, wrfob0, wrfoc0;
 Value xres0, xres1, xres2;
 Value wres0, wres1, wres2;
 wire xpres0, xpres1, xpres2;
@@ -45,6 +47,13 @@ wire prfo0, prfo1, prfo2;
 reg wprfo0, wprfo1, wprfo2;
 reg [63:0] pregfile;
 reg [9:0] asid;
+reg [7:0] tid;
+MemoryRequest memreq;
+MemoryResponse memresp;
+wire memq_full;
+wire memrq_empty;
+wire memrq_v;
+reg memrq_rd;
 
 DecoderOut dec0, dec1, dec2;
 DecoderOut exc0, exc1, exc2;
@@ -72,12 +81,12 @@ rfBlackWidow_biu ubiu1
 	.ifStall(1'b0),
 	.ic_line(ic_line),
 	.fifoToCtrl_wack(),
-	.fifoToCtrl_i(),
-	.fifoToCtrl_full_o(),
-	.fifoFromCtrl_o(),
-	.fifoFromCtrl_rd(),
-	.fifoFromCtrl_empty(),
-	.fifoFromCtrl_v(),
+	.fifoToCtrl_i(memreq),
+	.fifoToCtrl_full_o(memq_full),
+	.fifoFromCtrl_o(memresp),
+	.fifoFromCtrl_rd(memrq_rd),
+	.fifoFromCtrl_empty(memrq_empty),
+	.fifoFromCtrl_v(memrq_v),
 	.bok_i(bok_i),
 	.bte_o(bte_o),
 	.cti_o(cti_o),
@@ -295,7 +304,7 @@ rfBlackWidow_fwd_mux ufm8
 
 rfBlackWidow_pfwd_mux upfm0
 (
-	.pRn(ir0.Pn),
+	.pRn(ir0.any.pr),
 	.xpRt1(exc0.pRt1),
 	.xpRt2(exc0.pRt2),
 	.wpRt1(wb0.pRt1),
@@ -304,13 +313,13 @@ rfBlackWidow_pfwd_mux upfm0
 	.wprfwr(wb0.prfwr),
 	.xpres(xpres0),
 	.wpres(wpres0),
-	.prfo(pregfile[ir0.Pn]),
+	.prfo(pregfile[ir0.any.pr]),
 	.o(prfo0)
 );
 
 rfBlackWidow_pfwd_mux upfm1
 (
-	.pRn(ir1.Pn),
+	.pRn(ir1.any.pr),
 	.xpRt1(exc1.pRt1),
 	.xpRt2(exc1.pRt2),
 	.wpRt1(wb1.pRt1),
@@ -319,13 +328,13 @@ rfBlackWidow_pfwd_mux upfm1
 	.wprfwr(wb1.prfwr),
 	.xpres(xpres1),
 	.wpres(wpres1),
-	.prfo(pregfile[ir1.Pn]),
+	.prfo(pregfile[ir1.any.pr]),
 	.o(prfo1)
 );
 
 rfBlackWidow_pfwd_mux upfm2
 (
-	.pRn(ir2.Pn),
+	.pRn(ir2.any.pr),
 	.xpRt1(exc2.pRt1),
 	.xpRt2(exc2.pRt2),
 	.wpRt1(wb2.pRt1),
@@ -334,7 +343,7 @@ rfBlackWidow_pfwd_mux upfm2
 	.wprfwr(wb2.prfwr),
 	.xpres(xpres2),
 	.wpres(wpres2),
-	.prfo(pregfile[ir2.Pn]),
+	.prfo(pregfile[ir2.any.pr]),
 	.o(prfo2)
 );
 
@@ -345,6 +354,7 @@ rfBlackWidowAlu ualu0 (
 	.b(rfob0),
 	.c(rfoc0),
 	.imm(dec0.imm),
+	.tid(tid),
 	.res(xres0)
 );
 
@@ -355,6 +365,7 @@ rfBlackWidowAlu ualu1 (
 	.b(rfob1),
 	.c(rfoc1),
 	.imm(dec1.imm),
+	.tid(8'h00),
 	.res(xres1)
 );
 
@@ -365,6 +376,7 @@ rfBlackWidowAlu ualu2 (
 	.b(rfob2),
 	.c(rfoc2),
 	.imm(dec2.imm),
+	.tid(8'h00),
 	.res(xres2)
 );
 
@@ -395,18 +407,25 @@ rfBlackWidow_cmp_unit ucmp2
 	.res(xpres2)
 );
 
-always_comb
-	tgt0 = xres0;
+wire advance_pipe = ihit && !memq_full && (!exc0.ldchk || (memrq_v && memresp.tid >= tid));
 
 task tReset;
 begin
 	ip <= 80'h00FFFFFFFFFFFFFD0000;
+	tid <= 'd0;
+end
+endtask
+
+task tOnce;
+begin
+	memreq.wr <= `FALSE;
+	memrq_rd <= `FALSE;
 end
 endtask
 
 task tInsnFetch;
 begin
-	if (ihit) begin
+	begin
 		ir <= insn[239:0];
 		ir0 <= insn[39:0];
 		ir1 <= insn0.any.b ? NOP_INSN : insn[79:40];
@@ -426,12 +445,15 @@ endtask
 
 task tDecode;
 begin
-	exc0 <= dec0;
-	exc1 <= dec1;
-	exc2 <= dec2;
-	xir0 <= ir0;
-	xir1 <= ir1;
-	xir2 <= ir2;
+	begin
+		exc0 <= dec0;
+		exc1 <= dec1;
+		exc2 <= dec2;
+		xir0 <= ir0;
+		xir1 <= ir1;
+		xir2 <= ir2;
+		xip <= ip;
+	end
 end
 endtask
 
@@ -463,51 +485,182 @@ begin
 end
 endtask
 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+/*
+task tExMultiCycle;
+begin
+	begin
+	  if (exc0.mulall) begin
+	  	aqe_wr <= 1'b1;
+//	    goto(MUL1);
+	  end
+	  else if (exc0.divall) begin
+	  	aqe_wr <= 1'b1;
+//	    goto(DIV1);
+	  end
+	  else if (exc0.isDF) begin
+	  	aqe_wr <= 1'b1;
+//	  	goto (DF1);
+	  end
+//    if (xFloat)
+//      goto(FLOAT1);
+	end
+end
+endtask
+*/
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// Add memory ops to the memory queue.
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+task tExLoad;
+begin
+  if (exc0.loadr) begin
+  	memreq.tid <= tid;
+  	tid <= tid + 2'd1;
+  	memreq.func <= exc0.loadz ? MR_LOADZ : MR_LOAD;
+  	memreq.sz <= exc0.memsz;
+  	memreq.adr <= rfoa0 + exc0.imm;
+  	memreq.wr <= `TRUE;
+  end
+  else if (exc0.loadn) begin
+  	memreq.tid <= tid;
+  	tid <= tid + 2'd1;
+  	memreq.func <= exc0.loadz ? MR_LOADZ : MR_LOAD;
+  	memreq.sz <= exc0.memsz;
+  	memreq.adr <= rfoa0 + rfob0;
+  	memreq.wr <= `TRUE;
+  end
+  else if (exc0.ldchk) begin
+  	if (!memrq_v)
+  		memrq_rd <= 1'b1;
+  	if (memrq_empty)
+  		;
+  end
+end
+endtask
+
+task tWbStore;
+begin
+  if (wb0.storer) begin
+  	memreq.tid <= tid;
+  	tid <= tid + 2'd1;
+  	memreq.func <= MR_STORE;
+  	memreq.sz <= wb0.memsz;
+  	memreq.adr <= wrfoa0 + wb0.imm;
+  	memreq.dat <= wrfoc0;
+  	memreq.wr <= `TRUE;
+  end
+  else if (exc0.storen) begin
+  	memreq.tid <= tid;
+  	tid <= tid + 2'd1;
+  	memreq.func <= MR_STORE;
+  	memreq.sz <= wb0.memsz;
+  	memreq.adr <= wrfoa0 + wrfob0;
+  	memreq.dat <= wrfoc0;
+  	memreq.wr <= `TRUE;
+  end
+end
+endtask
+
 task tExecute;
 begin
-	wb0 <= exc0;
-	wb1 <= exc1;
-	wb2 <= exc2;
-	wir0 <= xir0;
-	wir1 <= xir1;
-	wir2 <= xir2;
-	wres0 <= xres0;
-	wres1 <= xres1;
-	wres2 <= xres2;
-	wpres0 <= xpres0;
-	wpres1 <= xpres1;
-	wpres2 <= xpres2;
-	wprfo0 <= prfo0;
-	wprfo1 <= prfo1;
-	wprfo2 <= prfo2;
-	if (exc0.dec.br & prfo0) begin
-		ip <= xip + exc0.imm;
-		tFlushPipe(2'd0);
-	end
-	else if (exc1.dec.br & prfo1) begin
-		ip <= xip + exc1.imm + 5'd5;
-		tFlushPipe(2'd1);
-	end
-	else if (exc2.dec.br & prfo2) begin
-		ip <= xip + exc2.imm + 5'd10;
-		tFlushPipe(2'd2);
+	begin
+		if (prfo0) begin
+			wb0 <= exc0;
+			wir0 <= xir0;
+			wres0 <= xres0;
+			wpres0 <= xpres0;
+			wprfo0 <= prfo0;
+			wrfoa0 <= rfoa0;
+			wrfob0 <= rfob0;
+			wrfoc0 <= rfoc0;
+			tExLoad();
+			if (prfo1) begin
+				wb1 <= exc1;
+				wir1 <= xir1;
+				wres1 <= xres1;
+				wpres1 <= xpres1;
+				wprfo1 <= prfo1;
+				if (prfo2) begin
+					wb2 <= exc2;
+					wir2 <= xir2;
+					wres2 <= xres2;
+					wpres2 <= xpres2;
+					wprfo2 <= prfo2;
+				end
+				else begin
+					wb2 <= 'd0;
+					wir2 <= NOP_INSN;
+					wres2 <= 'd0;
+					wpres2 <= 1'b0;
+					wprfo2 <= 1'b0;
+				end
+			end
+			else begin
+				wb1 <= 'd0;
+				wir1 <= NOP_INSN;
+				wres1 <= 'd0;
+				wpres1 <= 1'b0;
+				wprfo1 <= 1'b0;
+				wb2 <= 'd0;
+				wir2 <= NOP_INSN;
+				wres2 <= 'd0;
+				wpres2 <= 1'b0;
+				wprfo2 <= 1'b0;
+			end
+		end
+		else begin
+			wb0 <= 'd0;
+			wir0 <= NOP_INSN;
+			wres0 <= 'd0;
+			wpres0 <= 1'b0;
+			wprfo0 <= 1'b0;
+			wb1 <= 'd0;
+			wir1 <= NOP_INSN;
+			wres1 <= 'd0;
+			wpres1 <= 1'b0;
+			wprfo1 <= 1'b0;
+			wb2 <= 'd0;
+			wir2 <= NOP_INSN;
+			wres2 <= 'd0;
+			wpres2 <= 1'b0;
+			wprfo2 <= 1'b0;
+		end
+		if (exc0.br & prfo0) begin
+			ip <= xip + exc0.imm;
+			tFlushPipe(2'd0);
+		end
+		else if (exc1.br & prfo1) begin
+			ip <= xip + exc1.imm + 5'd5;
+			tFlushPipe(2'd1);
+		end
+		else if (exc2.br & prfo2) begin
+			ip <= xip + exc2.imm + 5'd10;
+			tFlushPipe(2'd2);
+		end
 	end
 end
 endtask
 
 task tWriteback;
 begin
-	if (wb0.prfwr & wprfo0) begin
-		pregfile[wb0.pRt1] =  wpres0;
-		pregfile[wb0.pRt2] = ~wpres0;
-	end
-	if (wb1.prfwr & wprfo1) begin
-		pregfile[wb1.pRt1] =  wpres1;
-		pregfile[wb1.pRt2] = ~wpres1;
-	end
-	if (wb2.prfwr & wprfo2) begin
-		pregfile[wb2.pRt1] =  wpres2;
-		pregfile[wb2.pRt2] = ~wpres2;
+	begin
+		if (wprfo0) begin
+			tWbStore();
+		end
+		if (wb0.prfwr & wprfo0) begin
+			pregfile[wb0.pRt1] =  wpres0;
+			pregfile[wb0.pRt2] = ~wpres0;
+		end
+		if (wb1.prfwr & wprfo1) begin
+			pregfile[wb1.pRt1] =  wpres1;
+			pregfile[wb1.pRt2] = ~wpres1;
+		end
+		if (wb2.prfwr & wprfo2) begin
+			pregfile[wb2.pRt1] =  wpres2;
+			pregfile[wb2.pRt2] = ~wpres2;
+		end
 	end
 end
 endtask
@@ -516,10 +669,13 @@ always_ff @(posedge clk_g)
 if (rst_i)
 	tReset();
 else begin
-	tInsnFetch();
-	tDecode();
-	tExecute();
-	tWriteback();
+	tOnce();
+	if (advance_pipe) begin
+		tInsnFetch();
+		tDecode();
+		tExecute();
+		tWriteback();
+	end
 end
 
 endmodule

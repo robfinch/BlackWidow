@@ -11,7 +11,7 @@ input wprfwr;
 input xpres;
 input wpres;
 input prfo;
-output o;
+output reg o;
 
 always_comb
 if (pRn=='d0)
@@ -27,6 +27,6 @@ else if (pRn == wpRt1 && wprfwr)
 else if (pRn == wpRt2 && wprfwr)
 	o = ~wpres;
 else
-	o = rfo;
+	o = prfo;
 
 endmodule

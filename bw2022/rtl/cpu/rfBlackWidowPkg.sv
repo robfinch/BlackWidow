@@ -9,6 +9,9 @@
 
 package rfBlackWidowPkg;
 
+parameter TRUE = 1'b1;
+parameter FALSE = 1'b0;
+
 parameter RSTIP	= 80'hFFFFFFFFFFFFFFFD0000;
 
 parameter R2		= 6'd2;
@@ -18,6 +21,9 @@ parameter ANDI	= 6'd8;
 parameter ORI		= 6'd9;
 parameter XORI	= 6'd10;
 parameter MULI	= 6'd12;
+parameter BRA		= 6'd13;
+parameter BSR		= 6'd14;
+parameter BMR		= 6'd15;
 parameter CMP		= 6'd16;
 parameter CMPU	= 6'd17;
 parameter FCMP	= 6'd18;
@@ -38,6 +44,7 @@ parameter LDOU	= 6'd39;
 parameter LDP		= 6'd40;
 parameter LDPU	= 6'd41;
 parameter LDD		= 6'd42;
+parameter LDCHK	= 6'd47;
 parameter STB		= 6'd48;
 parameter STW		= 6'd49;
 parameter STT		= 6'd50;
@@ -59,6 +66,10 @@ parameter AND		= 6'd8;
 parameter OR		= 6'd9;
 parameter XOR		= 6'd10;
 parameter MUL		= 6'd12;
+parameter JMP		= 6'd13;
+parameter SET		= 6'd28;
+parameter SETU	= 6'd29;
+parameter FSET	= 6'd30;
 
 parameter LDBX	= 6'd32;
 parameter LDBUX	= 6'd33;
@@ -93,9 +104,8 @@ parameter byt = 3'd0;
 parameter wyde = 3'd1;
 parameter tetra = 3'd2;
 parameter octa = 3'd3;
-parameter hexi = 3'd4;
-parameter hexipair = 3'd5;
-parameter hexiquad = 3'd6;
+parameter penta = 3'd4;
+parameter deci = 3'd5;
 parameter ptr = 3'd7;
 
 parameter MR_LOAD = 4'd0;
@@ -280,6 +290,7 @@ typedef union packed
 
 typedef struct packed
 {
+	logic [5:0] pn;
 	logic [5:0] Ra;
 	logic [5:0] Rb;
 	logic [5:0] Rc;
@@ -290,6 +301,13 @@ typedef struct packed
 	logic rfwr;
 	logic prfwr;
 	logic br;
+	logic loadz;
+	logic loadr;
+	logic loadn;
+	logic storer;
+	logic storen;
+	logic ldchk;
+	logic [2:0] memsz;
 } DecoderOut;
 
 // No unsigned codes!

@@ -1,12 +1,14 @@
 import rfBlackWidowPkg::*;
 
-module rfBlackWidowAlu(ir, ip, a, b, c, imm, res);
+module rfBlackWidowAlu(ir, ip, a, b, c, imm, tid, memres, res);
 input Instruction ir;
 input Address ip;
 input Value a;
 input Value b;
 input Value c;
 input Value imm;
+input [7:0] tid;
+input Value memres;
 output Value res;
 
 always_comb
@@ -57,6 +59,9 @@ R2:
 		NE:		res = a != b;
 		default:	res = 'd0;
 		endcase	
+	LDB,LDBU,LDW,LDWU,LDT,LDTU,LDO,LDOU,LDP,LDPU,LDD:
+		res = tid;
+	LDCHK:	res = memres;
 	JMP:			res = ip + 4'd5;
 	default:	res = 'd0;
 	endcase
@@ -85,6 +90,8 @@ SETUI:
 	NE:		res = a != imm;
 	default:	res = 'd0;
 	endcase
+LDB,LDBU,LDW,LDWU,LDT,LDTU,LDO,LDOU,LDP,LDPU,LDD:
+	res = tid;
 BRA:		res = ip + 4'd5;
 BSR:		res = ip + 4'd5;
 BMR:		res = ip + 4'd5;

@@ -5,7 +5,7 @@ input Instruction ir;
 input Value a;
 input Value b;
 input Value imm;
-output res;
+output reg res;
 
 always_comb
 case(ir.any.opcode)

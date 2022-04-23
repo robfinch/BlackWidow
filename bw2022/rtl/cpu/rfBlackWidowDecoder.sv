@@ -20,6 +20,13 @@ begin
 	dec.pn = ir.any.pr;
 	dec.pRt1 = 'd0;
 	dec.pRt2 = 'd0;
+	dec.memsz = 'd0;
+	dec.loadz = 1'b0;
+	dec.loadr = 1'b0;
+	dec.loadn = 1'b0;
+	dec.storer = 1'b0;
+	dec.storen = 1'b0;
+	dec.ldchk = 1'b0;
 	case(ir.any.opcode)
 	R2:
 		case(ir.r2.func)
@@ -31,17 +38,27 @@ begin
 		CMP,CMPU:
 			begin
 				dec.prfwr = 1'b1;
-				dec.pRt1 = ir.cmp.pRt1;
-				dec.pRt2 = ir.cmp.pRt2;
+				dec.pRt1 = ir.cmp.pt1;
+				dec.pRt2 = ir.cmp.pt2;
 			end
-		LDBX,LDBUX,LDWX,LDWUX,LDTX,LDTUX,LDOX,LDOUX,LDPX,LDPUX,LDDX:
+		LDBX,LDWX,LDTX,LDOX,LDPX,LDDX:
 			begin
 				dec.Rt = ir.ri.Rt;
 				dec.rfwr = 1'b1;
+				dec.loadn = 1'b1;
 			end
+		LDBUX,LDWUX,LDTUX,LDOUX,LDPUX:
+			begin
+				dec.Rt = ir.ri.Rt;
+				dec.rfwr = 1'b1;
+				dec.loadz = 1'b1;
+				dec.loadn = 1'b1;
+			end
+		LDCHK:	dec.ldchk = 1'b1;
 		STBX,STWX,STTX,STOX,STPX,STDX:
 			begin
 				dec.Rc = ir.ri.Rt;
+				dec.storen = 1'b1;
 			end
 		JMP:
 			begin	
@@ -63,19 +80,29 @@ begin
 		begin
 			dec.prfwr = 1'b1;
 			dec.imm = {{74{ir.cmpi.imm[5]}},ir.cmpi.imm};
-			dec.pRt1 = ir.cmpi.pRt1;
-			dec.pRt2 = ir.cmpi.pRt2;
+			dec.pRt1 = ir.cmpi.pt1;
+			dec.pRt2 = ir.cmpi.pt2;
 		end
-	LDB,LDBU,LDW,LDWU,LDT,LDTU,LDO,LDOU,LDP,LDPU,LDD:
+	LDB,LDW,LDT,LDO,LDP,LDD:
 		begin
 			dec.Rt = ir.ri.Rt;
 			dec.rfwr = 1'b1;
 			dec.imm = {{65{ir.ri.imm[14]}},ir.ri.imm};
+			dec.loadr = 1'b1;
+		end
+	LDBU,LDWU,LDTU,LDOU,LDPU:
+		begin
+			dec.Rt = ir.ri.Rt;
+			dec.rfwr = 1'b1;
+			dec.imm = {{65{ir.ri.imm[14]}},ir.ri.imm};
+			dec.loadz = 1'b1;
+			dec.loadr = 1'b1;
 		end
 	STB,STW,STT,STO,STP,STD:	
 		begin
 			dec.Rc = ir.ri.Rt;
 			dec.imm = {{65{ir.ri.imm[14]}},ir.ri.imm};
+			dec.storer = 1'b1;
 		end
 	BRA:
 		begin
@@ -99,6 +126,25 @@ begin
 	default:
 		begin
 		end
+	endcase
+	case(ir1.any.opcode)
+	R2:
+		case(ir1.r2.func)
+		LDBX,LDBUX,STBX:	dec.memsz = byt;
+		LDWX,LDWUX,STWX:	dec.memsz = wyde;
+		LDTX,LDTUX,STTX:	dec.memsz = tetra;
+		LDOX,LDOUX,STOX: dec.memsz = octa;
+		LDPX,LDPUX,STPX:	dec.memsz = penta;
+		LDDX,STDX:			dec.memsz = deci;
+		default:	dec.memsz = deci;
+		endcase
+	LDB,LDBU,STB:	dec.memsz = byt;
+	LDW,LDWU,STW:	dec.memsz = wyde;
+	LDT,LDTU,STT:	dec.memsz = tetra;
+	LDO,LDOU,STO: dec.memsz = octa;
+	LDP,LDPU,STP:	dec.memsz = penta;
+	LDD,STD:			dec.memsz = deci;
+	default:	dec.memsz = deci;
 	endcase
 	case(ir1.any.opcode)
 	CON1: dec.imm[79:6] = {{47{ir.con.imm[26]}},ir.con.imm};

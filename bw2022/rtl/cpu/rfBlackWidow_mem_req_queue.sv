@@ -85,8 +85,8 @@ byt:	fnSel = 32'h00000001;
 wyde:	fnSel = 32'h00000003;
 tetra:	fnSel = 32'h0000000F;
 octa:	fnSel = 32'h000000FF;
-hexi:	fnSel = 32'h0000FFFF;
-hexipair:	fnSel = 32'hFFFFFFFF;
+penta:	fnSel = 32'h0000001F;
+deci:	fnSel = 32'h000003FF;
 default:	fnSel = 32'h000000FF;
 endcase
 endfunction

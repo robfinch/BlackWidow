@@ -1262,9 +1262,9 @@ else begin
 			wyde:	memreq_sel <= 32'h00000003;
 			tetra:memreq_sel <= 32'h0000000F;
 			octa:	memreq_sel <= 32'h000000FF;
-			hexi:	memreq_sel <= 32'h0000FFFF;
-			hexipair:	memreq_sel <= 32'hFFFFFFFF;
-			default:	memreq_sel <= 32'h0000FFFF;
+			penta:	memreq_sel <= 32'h000000001F;
+			deci:	memreq_sel <= 32'h000003FF;
+			default:	memreq_sel <= 32'h000003FF;
 			endcase
 			goto (MEMORY_DISPATCH);
 		end
@@ -2800,9 +2800,8 @@ begin
     	wyde:	begin memresp.res <= {{112{datis[15]}},datis[15:0]}; end
     	tetra:	begin memresp.res <= {{96{datis[31]}},datis[31:0]}; end
     	octa:	begin memresp.res <= {{64{datis[63]}},datis[63:0]}; end
-    	hexi:	begin memresp.res <= datis[127:0]; end
-    	hexipair:	memresp.res <= dati;
-    	hexiquad:	begin memresp.res <= dati512; end
+    	penta:	begin memresp.res <= {{88{datis[39]}},datis[39:0]}; end
+    	deci:	begin memresp.res <= datis[79:0]; end
     	default:	memresp.res <= 'h0;
     	endcase
   	end
@@ -2813,9 +2812,8 @@ begin
     	wyde:	begin memresp.res <= {112'd0,datis[15:0]}; end
     	tetra:	begin memresp.res <= {96'd0,datis[31:0]}; end
     	octa:	begin memresp.res <= {64'd0,datis[63:0]}; end
-    	hexi:	begin memresp.res <= datis[127:0]; end
-    	hexipair:	memresp.res <= dati;
-    	hexiquad:	begin memresp.res <= dati512; end
+    	penta:	begin memresp.res <= {88'd0,datis[39:0]}; end
+    	deci:	begin memresp.res <= datis[79:0]; end
     	default:	memresp.res <= 'h0;
     	endcase
   	end
