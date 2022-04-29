@@ -50,9 +50,9 @@ input [1:0] way;
 input rclk;
 input [AWID-1:0] ip;
 (* ram_style="block" *)
-output [AWID-1:6] tag [0:3];
+output [AWID-1:7] tag [0:3];
 
-reg [AWID-1:6] tags [0:WAYS*LINES-1];
+reg [AWID-1:7] tags [0:WAYS*LINES-1];
 reg [AWID-1:0] rip;
 
 integer g;
@@ -68,18 +68,18 @@ end
 always_ff @(posedge clk)
 begin
 	if (wr)
-		tags[way * LINES + ipo[12:6]] <= ipo[AWID-1:6];
+		tags[{way,ipo[13:7]}] <= ipo[AWID-1:7];
 end
 
 always_ff @(posedge rclk)
 begin
-	rip[5:0] <= ip[5:0];	// not used
-	rip[12:6] <= ip[12:6] + (evn ? ip[6] : 1'b0);
-	rip[AWID-1:13] <= ip[AWID-1:13];
+	rip[6:0] <= ip[6:0];	// not used
+	rip[13:7] <= ip[13:7] + (evn ? ip[6] : 1'b0);
+	rip[AWID-1:14] <= ip[AWID-1:14];
 end
-assign tag[0] = tags[{2'b00,rip[12:6]}];
-assign tag[1] = tags[{2'b01,rip[12:6]}];
-assign tag[2] = tags[{2'b10,rip[12:6]}];
-assign tag[3] = tags[{2'b11,rip[12:6]}];
+assign tag[0] = tags[{2'b00,rip[13:7]}];
+assign tag[1] = tags[{2'b01,rip[13:7]}];
+assign tag[2] = tags[{2'b10,rip[13:7]}];
+assign tag[3] = tags[{2'b11,rip[13:7]}];
 
 endmodule

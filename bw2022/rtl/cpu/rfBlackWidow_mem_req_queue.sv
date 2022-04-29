@@ -39,7 +39,7 @@ import rfBlackWidowPkg::*;
 import rfBlackWidowMmuPkg::*;
 
 module rfBlackWidow_mem_req_queue(rst, clk, wr0, wr_ack0, i0, wr1, wr_ack1, i1,
-	rd, o, valid, empty, ldo0, found0, ldo1, found1);
+	rd, o, valid, empty, full, ldo0, found0, ldo1, found1);
 parameter AWID = 32;
 parameter QDEP = 7;
 input rst;
@@ -54,6 +54,7 @@ input rd;
 output MemoryRequest o;
 output reg valid;
 output reg empty;
+output reg full;
 output MemoryRequest ldo0;
 output reg found0;
 output MemoryRequest ldo1;
@@ -85,8 +86,7 @@ byt:	fnSel = 32'h00000001;
 wyde:	fnSel = 32'h00000003;
 tetra:	fnSel = 32'h0000000F;
 octa:	fnSel = 32'h000000FF;
-penta:	fnSel = 32'h0000001F;
-deci:	fnSel = 32'h000003FF;
+hexi:	fnSel = 32'h0000FFFF;
 default:	fnSel = 32'h000000FF;
 endcase
 endfunction
@@ -257,6 +257,8 @@ end
 
 always_comb
 	empty = ~|valid_bits;
+always_comb
+	full = &valid_bits;
 always_comb
 	o = que[0];
 always_comb

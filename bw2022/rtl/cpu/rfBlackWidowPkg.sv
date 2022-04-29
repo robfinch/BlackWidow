@@ -21,9 +21,9 @@ parameter ANDI	= 6'd8;
 parameter ORI		= 6'd9;
 parameter XORI	= 6'd10;
 parameter MULI	= 6'd12;
-parameter BRA		= 6'd13;
-parameter BSR		= 6'd14;
-parameter BMR		= 6'd15;
+parameter BNZ		= 6'd13;
+parameter BZ		= 6'd14;
+parameter BSR		= 6'd15;
 parameter CMP		= 6'd16;
 parameter CMPU	= 6'd17;
 parameter FCMP	= 6'd18;
@@ -41,17 +41,16 @@ parameter LDT		= 6'd36;
 parameter LDTU	= 6'd37;
 parameter LDO		= 6'd38;
 parameter LDOU	= 6'd39;
-parameter LDP		= 6'd40;
-parameter LDPU	= 6'd41;
-parameter LDD		= 6'd42;
+parameter LDH		= 6'd42;
 parameter LDCHK	= 6'd47;
 parameter STB		= 6'd48;
 parameter STW		= 6'd49;
 parameter STT		= 6'd50;
 parameter STO		= 6'd51;
-parameter STP		= 6'd52;
-parameter STD		= 6'd53;
+parameter STH		= 6'd53;
 
+parameter CON4	= 6'd59;
+parameter NOP		= 6'd60;
 parameter CON1	= 6'd61;
 parameter CON2	= 6'd62;
 parameter CON3	= 6'd63;
@@ -79,15 +78,12 @@ parameter LDTX	= 6'd36;
 parameter LDTUX	= 6'd37;
 parameter LDOX	= 6'd38;
 parameter LDOUX	= 6'd39;
-parameter LDPX	= 6'd40;
-parameter LDPUX	= 6'd41;
-parameter LDDX	= 6'd42;
+parameter LDHX	= 6'd42;
 parameter STBX	= 6'd48;
 parameter STWX	= 6'd49;
 parameter STTX	= 6'd50;
 parameter STOX	= 6'd51;
-parameter STPX	= 6'd52;
-parameter STDX	= 6'd53;
+parameter STHX	= 6'd53;
 
 // CMP ops
 parameter LT		= 3'd0;
@@ -97,15 +93,14 @@ parameter GT		= 3'd3;
 parameter EQ		= 3'd4;
 parameter NE	 	= 3'd5;
 
-parameter NOP_INSN	= 40'hF000000000;
+parameter NOP_INSN	= 40'h7800000000;
 
 // Memory Op sizes
 parameter byt = 3'd0;
 parameter wyde = 3'd1;
 parameter tetra = 3'd2;
 parameter octa = 3'd3;
-parameter penta = 3'd4;
-parameter deci = 3'd5;
+parameter hexi = 3'd4;
 parameter ptr = 3'd7;
 
 parameter MR_LOAD = 4'd0;
@@ -193,14 +188,13 @@ localparam pL1Imsb = $clog2(pL1ICacheLines-1)-1+6;
 
 typedef logic [39:0] Address;
 typedef logic [39:0] CodeAddress;
-typedef logic [79:0] Value;
+typedef logic [127:0] Value;
 
 typedef struct packed
 {
 	logic b;
 	logic [5:0] opcode;
-	logic [26:0] imm;
-	logic [5:0] pr;
+	logic [32:0] imm;
 } coninst;
 
 typedef struct packed
@@ -208,21 +202,19 @@ typedef struct packed
 	logic b;
 	logic [5:0] opcode;
 	logic [5:0] func;
-	logic [2:0] pad3;
+	logic [8:0] pad9;
 	logic [5:0] Rb;
 	logic [5:0] Ra;
 	logic [5:0] Rt;
-	logic [5:0] pr;
 } r2inst;
 
 typedef struct packed
 {
 	logic b;
 	logic [5:0] opcode;
-	logic [14:0] imm;
+	logic [20:0] imm;
 	logic [5:0] Ra;
 	logic [5:0] Rt;
-	logic [5:0] pr;
 } riinst;
 
 typedef struct packed
@@ -230,11 +222,10 @@ typedef struct packed
 	logic b;
 	logic [5:0] opcode;
 	logic [2:0] op;
-	logic [5:0] pt2;
-	logic [5:0] pt1;
+	logic [11:0] pad12;
 	logic [5:0] Rb;
 	logic [5:0] Ra;
-	logic [5:0] pr;
+	logic [5:0] Rt;
 } cmpinst;
 
 typedef struct packed
@@ -242,11 +233,9 @@ typedef struct packed
 	logic b;
 	logic [5:0] opcode;
 	logic [2:0] op;
-	logic [5:0] pt2;
-	logic [5:0] pt1;
-	logic [5:0] imm;
+	logic [17:0] imm;
 	logic [5:0] Ra;
-	logic [5:0] pr;
+	logic [5:0] Rt;
 } cmpiinst;
 
 typedef struct packed
@@ -254,10 +243,9 @@ typedef struct packed
 	logic b;
 	logic [5:0] opcode;
 	logic [2:0] op;
-	logic [11:0] imm;
+	logic [17:0] imm;
 	logic [5:0] Ra;
 	logic [5:0] Rt;
-	logic [5:0] pr;
 } setiinst;
 
 typedef struct packed
@@ -265,15 +253,22 @@ typedef struct packed
 	logic b;
 	logic [5:0] opcode;
 	logic [26:0] disp;
-	logic [5:0] pr;
+	logic [5:0] Ra;
 } brinst;
 
 typedef struct packed
 {
 	logic b;
 	logic [5:0] opcode;
-	logic [26:0] payload;
-	logic [5:0] pr;
+	logic [26:0] disp;
+	logic [5:0] Rt;
+} bsrinst;
+
+typedef struct packed
+{
+	logic b;
+	logic [5:0] opcode;
+	logic [32:0] payload;
 } anyinst;
 
 typedef union packed
@@ -285,6 +280,7 @@ typedef union packed
 	cmpiinst cmpi;
 	setiinst seti;
 	brinst br;
+	bsrinst bsr;
 	anyinst any;
 } Instruction;
 
@@ -295,12 +291,12 @@ typedef struct packed
 	logic [5:0] Rb;
 	logic [5:0] Rc;
 	logic [5:0] Rt;
-	logic [5:0] pRt1;
-	logic [5:0] pRt2;
 	Value imm;
 	logic rfwr;
 	logic prfwr;
 	logic br;
+	logic bz;
+	logic bnz;
 	logic loadz;
 	logic loadr;
 	logic loadn;

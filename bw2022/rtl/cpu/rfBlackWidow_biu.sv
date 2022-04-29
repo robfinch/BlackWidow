@@ -277,6 +277,7 @@ rfBlackWidow_mem_req_queue umreqq
 	.o(imemreq),
 	.valid(fifoToCtrl_v),
 	.empty(fifoToCtrl_empty),
+	.full(fifoToCtrl_full_o),
 	.ldo0(),
 	.found0(),
 	.ldo1(),
@@ -354,18 +355,18 @@ Address ipo;
 always_comb icache_wre = state==IFETCH3 && ~ipo[6];
 always_comb icache_wro = state==IFETCH3 &&  ipo[6];
 reg ic_invline,ic_invall;
-wire [AWID-1:6] ictage [0:3];
-wire [AWID-1:6] ictago [0:3];
+wire [AWID-1:7] ictage [0:3];
+wire [AWID-1:7] ictago [0:3];
 wire [512/4-1:0] icvalide [0:3];
 wire [512/4-1:0] icvalido [0:3];
 wire [511:0] ic_linee, ic_lineo;
 
-reg [639:0] ici;		// Must be a multiple of 128 bits wide for shifting.
-wire [AWID-7:0] ic_tage, ic_tago;
+reg [511:0] ici;		// Must be a multiple of 128 bits wide for shifting.
+wire [AWID-8:0] ic_tage, ic_tago;
 reg [2:0] ivcnt;
 reg [2:0] vcn;
-reg [pL1ICacheLineSize-1:0] ivcache [0:4];
-reg [AWID-1:6] ivtag [0:4];
+reg [511:0] ivcache [0:4];
+reg [AWID-1:8] ivtag [0:4];
 reg [4:0] ivvalid;
 wire ic_valide, ic_valido;
 reg ic_valid;
@@ -442,8 +443,10 @@ rfBlackWidow_ichit
 )
 uichit1e
 (
+	.evn(1'b1),
 	.clk(tlbclk),
-	.ip(ip[12:0]+{ip[6],6'b0}), // only bits 12 to 6 used
+	.ip(ip), // only bits 7 and up used
+	.ndx(ip[13:7]+ip[6]),
 	.tag(ictage),
 	.valid(icvalide),
 	.ihit(ihite),
@@ -460,8 +463,10 @@ rfBlackWidow_ichit
 )
 uichit1o
 (
+	.evn(1'b0),
 	.clk(tlbclk),
 	.ip(ip),
+	.ndx(ip[13:7]),
 	.tag(ictago),
 	.valid(icvalido),
 	.ihit(ihito),
@@ -511,13 +516,13 @@ uicval1o
 );
 
 always_comb
-	case(adr_o[6])
+	case(ip[6])
 	1'b0:	ic_line = {ic_lineo,ic_linee};
 	1'b1:	ic_line = {ic_linee,ic_lineo};
 	endcase
 reg eo_line;
 always_comb
-	eo_line = adr_o[6];
+	eo_line = ip[6];
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // Key Cache
@@ -1262,9 +1267,8 @@ else begin
 			wyde:	memreq_sel <= 32'h00000003;
 			tetra:memreq_sel <= 32'h0000000F;
 			octa:	memreq_sel <= 32'h000000FF;
-			penta:	memreq_sel <= 32'h000000001F;
-			deci:	memreq_sel <= 32'h000003FF;
-			default:	memreq_sel <= 32'h000003FF;
+			hexi:	memreq_sel <= 32'h0000FFFF;
+			default:	memreq_sel <= 32'h0000FFFF;
 			endcase
 			goto (MEMORY_DISPATCH);
 		end
@@ -1399,8 +1403,32 @@ else begin
 	// cache line.
 	IFETCH0:
 		begin
-			ipo <= {ip[$bits(Address)-1:6],6'b0};
-			iadr <= {ip[$bits(Address)-1:6],6'b0};
+			case({ip[6],ihite})
+			// Even access missing even fetch current line
+			2'b00:
+				begin
+					ipo <= {ip[$bits(Address)-1:6],6'b0};
+					iadr <= {ip[$bits(Address)-1:6],6'b0};
+				end
+			// Even access missing odd, fetch next line
+			2'b01:
+				begin
+					ipo <= {ip[$bits(Address)-1:6] + 1'b1,6'b0};
+					iadr <= {ip[$bits(Address)-1:6] + 1'b1,6'b0};
+				end
+			// Odd access missing even, fetch next line
+			2'b10:
+				begin
+					ipo <= {ip[$bits(Address)-1:6] + 1'd1,6'b0};
+					iadr <= {ip[$bits(Address)-1:6] + 1'd1,6'b0};
+				end
+			// Odd access missing odd, fetch current line
+			2'b11:
+				begin
+					ipo <= {ip[$bits(Address)-1:6],6'b0};
+					iadr <= {ip[$bits(Address)-1:6],6'b0};
+				end
+			endcase
 			goto (IFETCH1);
 			for (n = 0; n < 5; n = n + 1) begin
 				if (ivtag[n]==ip[AWID-1:6] && ivvalid[n]) begin
@@ -1435,11 +1463,9 @@ else begin
 						ivcnt <= ivcnt + 2'd1;
 						if (ivcnt>=3'd4)
 							ivcnt <= 3'd0;
-						ivcache[ivcnt] <= ic_line;
+						ivcache[ivcnt] <= eo_line ? ic_line[1023:512] : ic_line[511:0];
 						ivtag[ivcnt] <= eo_line ? ic_tago : ic_tage;
 						ivvalid[ivcnt] <= TRUE;
-						if (ic_line=='d0)
-							$stop;
 					end
 			  	vpa_o <= HIGH;
 			  	bte_o <= 2'b00;
@@ -1457,9 +1483,9 @@ else begin
 	  	if (tlbmiss)
 	  		tTlbMiss(tlbmiss_adr, ptbr[0] ? PT_FETCH1 : IPT_FETCH1, FLT_CPF);
 	    else if (ack_i) begin
-	      ici <= {dat_i,ici[639:128]};	// shift in the data
+	      ici <= {dat_i,ici[511:128]};	// shift in the data
 	      icnt <= icnt + 4'd4;					// increment word count
-	      if (icnt[4:2]==3'd4) begin		// Are we done?
+	      if (icnt[4:2]==3'd3) begin		// Are we done?
 	      	tDeactivateBus();
 	      	iaccess <= FALSE;
 	      	goto (IFETCH3);
@@ -1501,7 +1527,7 @@ else begin
 			if (ic_valid) begin
 				ivcache[vcn] <= ic_line;
 				ivtag[vcn] <= eo_line ? ic_tago : ic_tage;
-				ivvalid[vcn] <= `VAL;
+				ivvalid[vcn] <= 1'b1;
 				if (ic_line=='d0)
 					$stop;
 			end
@@ -2800,8 +2826,7 @@ begin
     	wyde:	begin memresp.res <= {{112{datis[15]}},datis[15:0]}; end
     	tetra:	begin memresp.res <= {{96{datis[31]}},datis[31:0]}; end
     	octa:	begin memresp.res <= {{64{datis[63]}},datis[63:0]}; end
-    	penta:	begin memresp.res <= {{88{datis[39]}},datis[39:0]}; end
-    	deci:	begin memresp.res <= datis[79:0]; end
+    	hexi:	begin memresp.res <= datis[127:0]; end
     	default:	memresp.res <= 'h0;
     	endcase
   	end
@@ -2812,8 +2837,7 @@ begin
     	wyde:	begin memresp.res <= {112'd0,datis[15:0]}; end
     	tetra:	begin memresp.res <= {96'd0,datis[31:0]}; end
     	octa:	begin memresp.res <= {64'd0,datis[63:0]}; end
-    	penta:	begin memresp.res <= {88'd0,datis[39:0]}; end
-    	deci:	begin memresp.res <= datis[79:0]; end
+    	hexi:	begin memresp.res <= datis[127:0]; end
     	default:	memresp.res <= 'h0;
     	endcase
   	end

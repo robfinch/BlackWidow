@@ -3,7 +3,7 @@ struct powerpc_operand
 {
   int bits;
   int shift;
-  uint32_t (*insert)(uint32_t,int32_t,const char **);
+  uint64_t (*insert)(uint64_t,int64_t,const char **);
   uint32_t flags;
 };
 
@@ -23,12 +23,12 @@ struct powerpc_operand
 #define OPER_VR       (0x1000)   /* Altivec register field */
 #define OPER_PN				(0x2000)		/* predicate register */
 #define OPER_SI6			(0x4000)		/* six bit signed immediate */
-#define OPER_DISP27	  (0x8000)		/* 27 bit signed branch displacement */
+#define OPER_SI18	  	(0x8000)		/* 27 bit signed branch displacement */
 
 /* Operand types. */
 enum {
  	UNUSED,
- 	PT1, PT2, SI6, UI7, DISP27,
+ 	PT1, PT2, SI6, UI7, RAB, SI18,
  	
   BA,BAT,BB,BBA,BD,BDA,BDM,BDMA,BDP,BDPA,BF,OBF,BFA,BI,BO,BOE,
   BT,CR,D,DS,E,FL1,FL2,FLM,FRA,FRB,FRC,FRS,FXM,L,LEV,LI,LIA,MB,ME,
@@ -54,36 +54,36 @@ enum {
 
 /* The functions used to insert complex operands. */
 
-static uint32_t insert_bat(uint32_t insn,int32_t value,const char **errmsg)
+static uint32_t insert_bat(uint64_t insn,int64_t value,const char **errmsg)
 {
   return insn | (((insn >> 21) & 0x1f) << 16);
 }
 
-static uint32_t insert_bba(uint32_t insn,int32_t value,const char **errmsg)
+static uint32_t insert_bba(uint64_t insn,int64_t value,const char **errmsg)
 {
   return insn | (((insn >> 16) & 0x1f) << 11);
 }
 
-static uint32_t insert_bd(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_bd(uint64_t insn,int64_t value,const char **errmsg)
 {
-  return insn | (value & 0x1ffffffc0);
+  return insn | ((value & 0x7ffffffLL) << 6LL);
 }
 
-static uint32_t insert_bdm(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_bdm(uint64_t insn,int64_t value,const char **errmsg)
 {
   if ((value & 0x8000) != 0)
     insn |= 1 << 21;
   return insn | (value & 0xfffc);
 }
 
-static uint32_t insert_bdp(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_bdp(uint64_t insn,int64_t value,const char **errmsg)
 {
   if ((value & 0x8000) == 0)
     insn |= 1 << 21;
   return insn | (value & 0xfffc);
 }
 
-static int valid_bo(int32_t value)
+static int valid_bo(int64_t value)
 {
   switch (value & 0x14) {
     default:
@@ -98,14 +98,14 @@ static int valid_bo(int32_t value)
   }
 }
 
-static uint32_t insert_bo(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_bo(uint64_t insn,int64_t value,const char **errmsg)
 {
   if (!valid_bo (value))
     *errmsg = "invalid conditional option";
   return insn | ((value & 0x1f) << 21);
 }
 
-static uint32_t insert_boe(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_boe(uint64_t insn,int64_t value,const char **errmsg)
 {
   if (!valid_bo (value))
     *errmsg = "invalid conditional option";
@@ -114,21 +114,21 @@ static uint32_t insert_boe(uint32_t insn,int32_t value,const char **errmsg)
   return insn | ((value & 0x1f) << 21);
 }
 
-static uint32_t insert_ds(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_ds(uint64_t insn,int64_t value,const char **errmsg)
 {
   return insn | (value & 0xfffc);
 }
 
-static uint32_t insert_li(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_li(uint64_t insn,int64_t value,const char **errmsg)
 {
   if ((value & 3) != 0)
     *errmsg = "ignoring least significant bits in branch offset";
   return insn | (value & 0x3fffffc);
 }
 
-static uint32_t insert_mbe(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_mbe(uint64_t insn,int64_t value,const char **errmsg)
 {
-  uint32_t uval, mask;
+  uint64_t uval, mask;
   int mb, me, mx, count, last;
 
   uval = value;
@@ -146,7 +146,7 @@ static uint32_t insert_mbe(uint32_t insn,int32_t value,const char **errmsg)
     last = 0;
   count = 0;
 
-  for (mx = 0, mask = (int32_t) 1 << 31; mx < 32; ++mx, mask >>= 1) {
+  for (mx = 0, mask = (int64_t) 1 << 31; mx < 32; ++mx, mask >>= 1) {
     if ((uval & mask) && !last) {
       ++count;
       mb = mx;
@@ -168,12 +168,12 @@ static uint32_t insert_mbe(uint32_t insn,int32_t value,const char **errmsg)
   return insn | (mb << 6) | ((me - 1) << 1);
 }
 
-static uint32_t insert_mb6(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_mb6(uint64_t insn,int64_t value,const char **errmsg)
 {
   return insn | ((value & 0x1f) << 6) | (value & 0x20);
 }
 
-static uint32_t insert_nb(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_nb(uint64_t insn,int64_t value,const char **errmsg)
 {
   if (value < 0 || value > 32)
     *errmsg = "value out of range";
@@ -182,49 +182,49 @@ static uint32_t insert_nb(uint32_t insn,int32_t value,const char **errmsg)
   return insn | ((value & 0x1f) << 11);
 }
 
-static uint32_t insert_nsi(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_nsi(uint64_t insn,int64_t value,const char **errmsg)
 {
   return insn | ((- value) & 0xffff);
 }
 
-static uint32_t insert_ral(uint64_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_ral(uint64_t insn,int64_t value,const char **errmsg)
 {
   if (value == 0
-      || (uint32_t) value == ((insn >> 21) & 0x1f))
+      || (uint64_t) value == ((insn >> 21) & 0x1f))
     *errmsg = "invalid register operand when updating";
   return insn | ((value & 0x1f) << 12);
 }
 
-static uint32_t insert_ram(uint64_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_ram(uint64_t insn,int64_t value,const char **errmsg)
 {
-  if ((uint32_t) value >= ((insn >> 21) & 0x1f))
+  if ((uint64_t) value >= ((insn >> 21) & 0x1f))
     *errmsg = "index register in load range";
   return insn | ((value & 0x1f) << 12);
 }
 
-static uint32_t insert_ras(uint64_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_ras(uint64_t insn,int64_t value,const char **errmsg)
 {
   if (value == 0)
     *errmsg = "invalid register operand when updating";
   return insn | ((value & 0x1f) << 12);
 }
 
-static uint32_t insert_rbs(uint64_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_rbs(uint64_t insn,int64_t value,const char **errmsg)
 {
   return insn | (((insn >> 21) & 0x1f) << 11);
 }
 
-static uint32_t insert_sh6(uint64_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_sh6(uint64_t insn,int64_t value,const char **errmsg)
 {
   return insn | ((value & 0x1f) << 11) | ((value & 0x20) >> 4);
 }
 
-static uint32_t insert_spr(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_spr(uint64_t insn,int64_t value,const char **errmsg)
 {
   return insn | ((value & 0x1f) << 16) | ((value & 0x3e0) << 6);
 }
 
-static uint32_t insert_sprg(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_sprg(uint64_t insn,int64_t value,const char **errmsg)
 {
   /* @@@ only BOOKE, VLE and 405 have 8 SPRGs */
   if (value & ~7)
@@ -234,38 +234,38 @@ static uint32_t insert_sprg(uint32_t insn,int32_t value,const char **errmsg)
   return insn | ((value & 17) << 16);
 }
 
-static uint32_t insert_tbr(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_tbr(uint64_t insn,int64_t value,const char **errmsg)
 {
   if (value == 0)
     value = 268;
   return insn | ((value & 0x1f) << 16) | ((value & 0x3e0) << 6);
 }
 
-static uint32_t insert_slwi(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_slwi(uint64_t insn,int64_t value,const char **errmsg)
 {
   return insn | ((value&0x1f)<<11) | ((31-(value&0x1f))<<1);
 }
 
-static uint32_t insert_srwi(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_srwi(uint64_t insn,int64_t value,const char **errmsg)
 {
   return insn | (((32-value)&0x1f)<<11) | ((value&0x1f)<<6) | (31<<1);
 }
 
-static uint32_t insert_extlwi(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_extlwi(uint64_t insn,int64_t value,const char **errmsg)
 {
   if (value<1 || value>32)
     *errmsg = "value out of range (1-32)";
   return insn | (((value-1)&0x1f)<<1);
 }
 
-static uint32_t insert_extrwi(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_extrwi(uint64_t insn,int64_t value,const char **errmsg)
 {
   if (value<1 || value>32)
     *errmsg = "value out of range (1-32)";
   return insn | ((value&0x1f)<<11) | (((32-value)&0x1f)<<6) | (31<<1);
 }
 
-static uint32_t insert_extwib(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_extwib(uint64_t insn,int64_t value,const char **errmsg)
 {
   value += (insn>>11) & 0x1f;
   if (value > 32)
@@ -273,44 +273,44 @@ static uint32_t insert_extwib(uint32_t insn,int32_t value,const char **errmsg)
   return (insn&~0xf800) | ((value&0x1f)<<11);
 }
 
-static uint32_t insert_inslwi(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_inslwi(uint64_t insn,int64_t value,const char **errmsg)
 {
-  int32_t n = ((insn>>1) & 0x1f) + 1;
+  int64_t n = ((insn>>1) & 0x1f) + 1;
   if (value+n > 32)
     *errmsg = "sum of last two operands out of range (1-32)";
   return (insn&~0xfffe) | (((32-value)&0x1f)<<11) | ((value&0x1f)<<6)
                         | ((((value+n)-1)&0x1f)<<1);
 }
 
-static uint32_t insert_insrwi(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_insrwi(uint64_t insn,int64_t value,const char **errmsg)
 {
-  int32_t n = ((insn>>1) & 0x1f) + 1;
+  int64_t n = ((insn>>1) & 0x1f) + 1;
   if (value+n > 32)
     *errmsg = "sum of last two operands out of range (1-32)";
   return (insn&~0xfffe) | (((32-(value+n))&0x1f)<<11) | ((value&0x1f)<<6)
                         | ((((value+n)-1)&0x1f)<<1);
 }
 
-static uint32_t insert_rotrwi(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_rotrwi(uint64_t insn,int64_t value,const char **errmsg)
 {
   return insn | (((32-value)&0x1f)<<11);
 }
 
-static uint32_t insert_clrrwi(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_clrrwi(uint64_t insn,int64_t value,const char **errmsg)
 {
   return insn | (((31-value)&0x1f)<<1);
 }
 
-static uint32_t insert_clrlslwi(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_clrlslwi(uint64_t insn,int64_t value,const char **errmsg)
 {
-  int32_t b = (insn>>6) & 0x1f;
+  int64_t b = (insn>>6) & 0x1f;
   if (value > b)
     *errmsg = "n (4th oper) must be less or equal to b (3rd oper)";
   return (insn&~0x7c0) | ((value&0x1f)<<11) | (((b-value)&0x1f)<<6)
                        | (((31-value)&0x1f)<<1);
 }
 
-static uint32_t insert_ls(uint32_t insn,int32_t value,const char **errmsg)
+static uint64_t insert_ls(uint64_t insn,int64_t value,const char **errmsg)
 {
   /* @@@ check for POWER4 */
   return insn | ((value&3)<<21);
@@ -337,8 +337,11 @@ const struct powerpc_operand powerpc_operands[] =
   /* UI7 */
   { 7, 18, 0, OPER_SI6 },
 
-  /* DISP27 */
-  { 26, 6, 0, OPER_DISP27 },
+  /* RAB */
+  { 6, 0, 0, OPER_GPR },
+
+  /* SI18 */
+  { 18, 12, 0, OPER_SI18 },
 
   /* BA */
   { 5, 16, 0, OPER_CR },
@@ -353,7 +356,7 @@ const struct powerpc_operand powerpc_operands[] =
   { 5, 11, insert_bba, OPER_FAKE },
 
   /* BD */
-  { 16, 0, insert_bd, OPER_RELATIVE | OPER_SIGNED },
+  { 27, 6, insert_bd, OPER_RELATIVE | OPER_SIGNED },
 
   /* BDA */
   { 16, 0, insert_bd, OPER_ABSOLUTE | OPER_SIGNED },
@@ -460,7 +463,7 @@ const struct powerpc_operand powerpc_operands[] =
   { 16, 0, insert_nsi, OPER_NEGATIVE | OPER_SIGNED },
 
   /* RA */
-  { 6, 12, 0, OPER_GPR },
+  { 6, 6, 0, OPER_GPR },
 
   /* RAL */
   { 5, 16, insert_ral, OPER_GPR },
@@ -472,13 +475,13 @@ const struct powerpc_operand powerpc_operands[] =
   { 5, 16, insert_ras, OPER_GPR },
 
   /* RB */
-  { 6, 18, 0, OPER_GPR },
+  { 6, 12, 0, OPER_GPR },
 
   /* RBS */
   { 5, 1, insert_rbs, OPER_FAKE },
 
   /* RS */
-  { 6, 6, 0, OPER_GPR },
+  { 6, 0, 0, OPER_GPR },
 
   /* SH */
   { 5, 11, 0, 0 },
@@ -487,7 +490,7 @@ const struct powerpc_operand powerpc_operands[] =
   { 6, 1, insert_sh6, 0 },
 
   /* SI */
-  { 16, 0, 0, OPER_SIGNED },
+  { 15, 18, 0, OPER_SIGNED },
 
   /* SISIGNOPT */
   { 16, 0, 0, OPER_SIGNED | OPER_SIGNOPT },

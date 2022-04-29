@@ -18,6 +18,7 @@ char *cpuname = "rfBlackWidow";
 int bitsperbyte = 8;
 int bytespertaddr = 8;
 int ppc_endianess = 0;
+int abits=32;
 
 static uint64_t cpu_type = BWCOM;
 static int regnames = 1;
@@ -29,6 +30,7 @@ static unsigned char con2 = 0;
 static unsigned char con3 = 0;
 static unsigned char con4 = 0;
 static unsigned char con5 = 0;
+static unsigned char got_break = 0;
 
 
 int ppc_data_align(int n)
@@ -91,6 +93,16 @@ int ppc_available(int idx)
   return 0;
 }
 
+/* check if a given value fits within a certain number of bits */
+static int is_nbit(int64_t val, int64_t n)
+{
+	int64_t low, high;
+  if (n > 63)
+    return (1);
+	low = -(1LL << (n - 1LL));
+	high = (1LL << (n - 1LL));
+	return (val >= low && val < high);
+}
 
 static char *parse_reloc_attr(char *p,operand *op)
 {
@@ -185,12 +197,35 @@ int parse_operand(char *p,int len,operand *op,int optype)
 {
   char *start = p;
   int rc = PO_MATCH;
+  char needpa = 0;
 
   op->attr = REL_NONE;
   op->mode = OPM_NONE;
   op->basereg = NULL;
 
   p = skip(p);
+  /* Look for indexed addressing */
+  if (*p=='[') {
+  	p++;
+  	p = skip(p);
+  	needpa = 1;
+	  op->basereg = parse_expr(&p);
+  	p = skip(p);
+  	if (*p==',') {
+  		p++;
+  		p = skip(p);
+  		op->ndxreg = parse_expr(&p);
+  		rc = PO_SKIP;
+  	}
+  	p = skip(p);
+  	if (*p!=']') {
+      cpu_error(5);  /* missing closing parenthesis */
+      rc = PO_CORRUPT;
+      goto leave;
+  	}
+  	goto chksemi;
+  }
+
   op->value = OP_FLOAT(optype) ? parse_expr_float(&p) : parse_expr(&p);
 
   if (!OP_DATA(optype)) {
@@ -221,9 +256,16 @@ int parse_operand(char *p,int len,operand *op,int optype)
       }
     }
   }
-
-  if (p-start < len)
-    cpu_error(3);  /* trailing garbage in operand */
+chksemi:
+  if (p-start < len) {
+  	p = skip(p);
+  	if (*p==';') {
+  		op->mode |= OPM_BREAK;
+  		p++;
+  	}
+  	if (p-start < len)
+    	cpu_error(3);  /* trailing garbage in operand */
+  }
 leave:
   op->type = optype;
   return rc;
@@ -281,8 +323,8 @@ static int get_reloc_type(operand *op)
   else {  /* handle instruction relocs */
     const struct powerpc_operand *ppcop = &powerpc_operands[op->type];
 
-    if (ppcop->shift == 0) {
-      if (ppcop->bits == 16 || ppcop->bits == 26) {
+    if (ppcop->shift == 6) {
+      if (ppcop->bits == 27) {
 
         if (ppcop->flags & OPER_RELATIVE) {  /* a relative branch */
           switch (op->attr) {
@@ -425,21 +467,14 @@ static taddr make_reloc(int reloctype,operand *op,section *sec,
 
         if (ppcop->flags & (OPER_RELATIVE|OPER_ABSOLUTE)) {
           /* branch instruction */
-          if (ppcop->bits == 26) {
-            size = 24;
-            pos = 6;
-            mask = 0x3fffffc;
-          }
-          else {
-            size = 14;
-            offset = 2;
-            mask = 0xfffc;
-          }
+          size = 27;
+          pos = 6;
+          mask = 0x7ffffff;
           addend = (btype == BASE_PCREL) ? val + offset : val;
         }
         else {
           /* load/store or immediate */
-          size = 16;
+          size = 15;
           offset = 2;
           addend = (btype == BASE_PCREL) ? val + offset : val;
           switch (op->mode) {
@@ -463,6 +498,20 @@ static taddr make_reloc(int reloctype,operand *op,section *sec,
 
       add_extnreloc_masked(reloclist,base,addend,reloctype,
                            pos,size,offset,mask);
+      if (!is_nbit(addend,15)) {
+	      add_extnreloc_masked(reloclist,base,addend,reloctype,
+	                           46,27,0,0x1ffffffc0LL);
+	      if (!is_nbit(addend,33)) {
+		      add_extnreloc_masked(reloclist,base,addend,reloctype,
+		                           86,27,0,0xffffffe00000000LL);
+		      if (!is_nbit(addend,60)) {
+			      add_extnreloc_masked(reloclist,base,addend,reloctype,
+		                           126,27,0,0xf000000000000000LL);
+		      	
+		      }
+	      	
+	      }
+      }
     }
     else if (btype != BASE_NONE) {
 illreloc:
@@ -510,6 +559,7 @@ static void range_check(taddr val,const struct powerpc_operand *o,dblock *db)
   }
 
   if (o->flags & OPER_SIGNED) {
+  	return;
     minv = ~(maxv >> 1);
 
     /* @@@ Only recognize this flag in 32-bit mode! Don't care for now */
@@ -534,25 +584,25 @@ static void negate_bo_cond(uint32_t *p)
 }
 
 
-static uint32_t insertcode(uint32_t i,taddr val,
+static uint64_t insertcode(uint64_t i,taddr val,
                            const struct powerpc_operand *o)
 {
   if (o->insert) {
     const char *errmsg = NULL;
 
-    i = (o->insert)(i,(int32_t)val,&errmsg);
+    i = (o->insert)(i,(int64_t)val,&errmsg);
     if (errmsg)
       cpu_error(0,errmsg);
   }
   else
-    i |= ((int32_t)val & ((1<<o->bits)-1)) << o->shift;
+    i |= ((int64_t)val & ((1LL<<o->bits)-1LL)) << o->shift;
 
   return i;
 }
 
 
 size_t eval_operands(instruction *ip,section *sec,taddr pc,
-                     uint32_t *insn,dblock *db)
+                     uint64_t *insn,dblock *db)
 /* evaluate expressions and try to optimize instruction,
    return size of instruction */
 {
@@ -560,6 +610,7 @@ size_t eval_operands(instruction *ip,section *sec,taddr pc,
   size_t isize = 5;
   int i;
   operand op;
+	con1 = con2 = con3 = 0;
 
   if (insn != NULL)
     *insn = mnemo->ext.opcode;
@@ -602,13 +653,15 @@ size_t eval_operands(instruction *ip,section *sec,taddr pc,
     }
     else {
       if (!eval_expr(op.value,&val,sec,pc))
-        if (insn != NULL)
+        if (insn != NULL) {
+        	printf("1: err found\n");
           cpu_error(2);  /* constant integer expression required */
+        }
     }
 
     /* execute modifier on val */
     if (op.mode) {
-      switch (op.mode) {
+      switch (op.mode & 0x7f) {
         case OPM_LO:
           val &= 0xffff;
           break;
@@ -619,27 +672,95 @@ size_t eval_operands(instruction *ip,section *sec,taddr pc,
           val = ((val>>16) + ((val & 0x8000) ? 1 : 0) & 0xffff);
           break;
       }
-      if ((ppcop->flags & OPER_SIGNED) && (val & 0x8000))
-        val -= 0x10000;
+//      if ((ppcop->flags & OPER_SIGNED) && (val & 0x8000))
+//        val -= 0x10000;
     }
+    if (op.mode & OPM_BREAK) {
+    	got_break = 1;
+    }
+    
+    if ((ppcop->flags & OPER_SIGNED)) {
+			if (!is_nbit(val,21)) {
+				con1 = 1;
+				isize += 5;
+				if (!is_nbit(val,45)) {
+					con2 = 1;
+					isize += 5;
+					/*
+					if (!is_nbit(val,72)) {
+						con3 = 1;
+						isize += 5;
+					}
+					*/
+				}
+			}
+			if (insn != NULL) {
+				if (con1) {
+					insn++;
+					*insn = 0x7A00000000LL | (((val >> 18LL) & 0x7ffffffLL) << 6LL);
+				}
+				if (con2) {
+					insn++;
+					*insn = 0x7C00000000LL | (((val >> 45LL) & 0x7ffffffLL) << 6LL);
+				}
+				/*
+				if (con3) {
+					insn++;
+					*insn = 0x7E00000000LL | (((val >> 72LL) & 0xfLL) << 6LL);
+				}
+				*/
+			}
+		}
+    if ((ppcop->flags & OPER_SI18)) {
+			if (!is_nbit(val,18)) {
+				con1 = 1;
+				isize += 5;
+				if (!is_nbit(val,45)) {
+					con2 = 1;
+					isize += 5;
+					/*
+					if (!is_nbit(val,72)) {
+						con3 = 1;
+						isize += 5;
+					}
+					*/
+				}
+			}
+			if (insn != NULL) {
+				if (con1) {
+					insn++;
+					*insn = 0x7A00000000LL | (((val >> 18LL) & 0x7ffffffLL) << 6LL);
+				}
+				if (con2) {
+					insn++;
+					*insn = 0x7C00000000LL | (((val >> 45LL) & 0x7ffffffLL) << 6LL);
+				}
+				/*
+				if (con3) {
+					insn++;
+					*insn = 0x7E00000000LL | (((val >> 72LL) & 0xfLL) << 6LL);
+				}
+				*/
+			}
+		}
 
     /* do optimizations here: */
 
     if (opt_branch) {
       if (reloctype==REL_PC &&
           (op.type==BD || op.type==BDM || op.type==BDP)) {
-        if (val<-0x8000 || val>0x7fff) {
+        if (val<-0x4000000LL || val>0x3ffffffLL) {
           /* "B<cc>" branch destination out of range, convert into
              a "B<!cc> ; B" combination */
           if (insn != NULL) {
             negate_bo_cond(insn);
-            *insn = insertcode(*insn,8,ppcop);  /* B<!cc> $+8 */
+            *insn = insertcode(*insn,15,ppcop);  /* B<!cc> $+15 */
             insn++;
             *insn = B(18,0,0);  /* set B instruction opcode */
-            val -= 4;
+            val -= 5;
           }
           ppcop = &powerpc_operands[LI];  /* set oper. for B instruction */
-          isize = 8;
+          isize = 10;
         }
       }
     }
@@ -671,8 +792,10 @@ size_t eval_operands(instruction *ip,section *sec,taddr pc,
         op.mode = OPM_NONE;
         op.value = op.basereg;
         if (!eval_expr(op.value,&val,sec,pc))
-          if (insn != NULL)
+          if (insn != NULL) {
+          	printf("2: err found\n");
             cpu_error(2);  /* constant integer expression required */
+          }
       }
       else if (insn != NULL)
         cpu_error(14);  /* missing base register */
@@ -709,12 +832,17 @@ dblock *eval_instruction(instruction *ip,section *sec,taddr pc)
   dblock *db = new_dblock();
   uint64_t insn[6];
 
+	got_break = 0;
   if (db->size = eval_operands(ip,sec,pc,insn,db)) {
     unsigned char *d = db->data = mymalloc(db->size);
     int i;
 
-    for (i=0; i<db->size/5; i++)
+    for (i=0; i<db->size/5; i++) {
+    	if (i==db->size/5-1 && got_break) {
+    		insn[i] |= 0x8000000000LL;
+    	}
       d = setval(0,d,5,insn[i]);
+    }
   }
 
   return db;
@@ -819,6 +947,15 @@ int cpu_args(char *p)
 {
   int i;
 
+  abits = 32;
+  if (strncmp(p, "-abits=", 7)==0) {
+  	abits = atoi(&p[7]);
+  	if (abits < 16)
+  		abits = 16;
+  	else if (abits > 64)
+  		abits = 64;
+  	return (1);
+  }
   if (!strncmp(p,"-m",2)) {
     p += 2;
     if (!strcmp(p,"pwrx") || !strcmp(p,"pwr2"))

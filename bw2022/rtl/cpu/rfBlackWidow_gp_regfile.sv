@@ -87,10 +87,16 @@ initial begin
 	for (n = 0; n < 32; n = n + 1) begin
 		regfileA[n] = 'd0;
 		regfileB[n] = 'd0;
+		regfileC[n] = 'd0;
 	end
 end
 
 always_ff @(posedge clk)
+begin
+$display("rf writes %c%c%c", wr2?"w":" ", wr1?"w":" ",wr0?"w":" ");
+if (wr0) $display("ch0: r%d = %h", wa0, i0);
+if (wr1) $display("ch1: r%d = %h", wa1, i1);
+if (wr2) $display("ch2: r%d = %h", wa2, i2);
 case({wr2,wr1,wr0})
 3'b000:	;
 // Single writes
@@ -164,6 +170,7 @@ case({wr2,wr1,wr0})
 		end
 	end
 endcase
+end
 
 always_comb
 	o0 = ra0=='d0 ? 'd0 : ra0==wa2 && wr2 ? i2 : ra0==wa1 && wr1 ? i1 : ra0==wa0 && wr0 ? i0 : way[ra0]==2'd2 ? regfileC[ra0] : way[ra0]==2'd1 ? regfileB[ra0] : regfileA[ra0];

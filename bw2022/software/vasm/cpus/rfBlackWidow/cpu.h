@@ -62,6 +62,7 @@ typedef struct {
   unsigned char mode;   /* @l/h/ha */
   expr *value;
   expr *basereg;  /* only for d(Rn) load/store addressing mode */
+  expr *ndxreg;
 } operand;
 
 /* operand modifier */
@@ -69,6 +70,7 @@ typedef struct {
 #define OPM_LO 1  /* low 16 bits */
 #define OPM_HI 2  /* high 16 bits */
 #define OPM_HA 3  /* high 16 bits with addi compensation */
+#define OPM_BREAK	128
 
 
 /* additional mnemonic data */

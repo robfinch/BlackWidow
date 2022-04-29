@@ -11,6 +11,16 @@ input [7:0] tid;
 input Value memres;
 output Value res;
 
+wire cmpres;
+rfBlackWidow_cmp_unit ucmp0
+(
+	.ir(ir),
+	.a(a),
+	.b(b),
+	.imm(imm),
+	.res(cmpres)
+);
+
 always_comb
 case(ir.any.opcode)
 R2:
@@ -59,7 +69,7 @@ R2:
 		NE:		res = a != b;
 		default:	res = 'd0;
 		endcase	
-	LDB,LDBU,LDW,LDWU,LDT,LDTU,LDO,LDOU,LDP,LDPU,LDD:
+	LDBX,LDBUX,LDWX,LDWUX,LDTX,LDTUX,LDOX,LDOUX,LDHX:
 		res = tid;
 	LDCHK:	res = memres;
 	JMP:			res = ip + 4'd5;
@@ -70,6 +80,7 @@ SUBFI:	res = imm - a;
 ANDI:		res = a & imm;
 ORI:		res = a | imm;
 XORI:		res = a ^ imm;
+CMPI,CMP,CMPUI,CMPU:	res = cmpres;
 SETI:
 	case(ir.seti.op)
 	LT:		res = $signed(a) < $signed(imm);
@@ -90,11 +101,9 @@ SETUI:
 	NE:		res = a != imm;
 	default:	res = 'd0;
 	endcase
-LDB,LDBU,LDW,LDWU,LDT,LDTU,LDO,LDOU,LDP,LDPU,LDD:
+LDB,LDBU,LDW,LDWU,LDT,LDTU,LDO,LDOU,LDH:
 	res = tid;
-BRA:		res = ip + 4'd5;
 BSR:		res = ip + 4'd5;
-BMR:		res = ip + 4'd5;
 default:	res = 'd0;
 endcase
 

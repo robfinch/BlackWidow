@@ -70,11 +70,11 @@ if (rst) begin
 end
 else begin
 	if (wr)
-		valid[way][ip[12:6]] <= 1'b1;
+		valid[way][ip[13:7]] <= 1'b1;
 	else if (invce) begin
 		for (g = 0; g < WAYS; g = g + 1) begin
 			if (invline)
-				valid[g][adr[12:6]] <= 1'b0;
+				valid[g][adr[13:7]] <= 1'b0;
 			else if (invall)
 				valid[g] <= 'd0;
 		end
